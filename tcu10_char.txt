@@ -1,0 +1,164 @@
+function [tick] = tcu10_char(alt_crossing,alt_u10,averaging_window)
+
+% alt_crossing: the whole altimeter segment profile consisting all variables. altimeter data are extracted from aviso format
+% alt_u10: the highest accuracy U10 product available survived in TC environment
+% averaging_window: moving average window for U10 smoothing process
+
+%% code start here
+
+% identify maximum ws
+[tick.max_ws,I] = max(alt_mlws);
+tick.max_ws_lat = alt_crossing.lat(I);
+tick.max_ws_lon = alt_crossing.lon(I);
+tick.ws_mm = movmean(alt_mlws,averaging);               % run moving average at averaging time window
+tick.msw = max(tick.ws_mm);
+
+% identify maximum swh
+tick.swh_mm = movmean(alt_crossing.swh_c,averaging);
+tick.max_swh = max(tick.swh_mm);
+
+% identify the eyewall and the eye radius
+[temp_peaks,temp_locpeaks] = findpeaks(alt_mlws, 'SortStr', 'descend', 'NPeaks', 2);
+range_peak = [temp_locpeaks-25:1:temp_locpeaks+25]';
+greater0 = find(range_peak > 0 & range_peak <= size(alt_mlws,1));
+
+if min(temp_peaks) >= 20
+    range_peak = range_peak(greater0);
+    temp_mlws = alt_mlws(range_peak);
+    temp_lat = alt_crossing.lat(range_peak);
+    temp_lon = alt_crossing.lon(range_peak);
+    [temp_peaks,temp_locpeaks] = findpeaks(temp_mlws, 'SortStr', 'descend', 'NPeaks', 2);
+    if size(temp_locpeaks,1) > 1
+        tick.eyeradius = lldistkm([temp_lat(temp_locpeaks(1)) temp_lon(temp_locpeaks(1))],[temp_lat(temp_locpeaks(2)) temp_lon(temp_locpeaks(2))]);
+    else
+        tick.eyeradius = [];
+    end
+    % identify the center and its trough wind speed
+    temp_wseye = temp_mlws(min(temp_locpeaks):max(temp_locpeaks));
+    [tick.wseyemin,temp_minwseyeid] = min(temp_wseye);
+    tick.wseyemin_lat = temp_lat(min(temp_locpeaks)+temp_minwseyeid-1);
+    tick.wseyemin_lon = temp_lon(min(temp_locpeaks)+temp_minwseyeid-1);
+    % determine if eye is formed
+    wseyediff = max(temp_peaks) - tick.wseyemin;
+    if wseyediff >= 5
+        tick.eye = 1; % if ws of highest peak to trough > 5m/s, assume eye is formed.
+    elseif wseyediff < 5
+        tick.eye = 0; % if ws of highest peak to trough < 5m/s, assume eye is not yet formed.
+    end
+elseif min(temp_peaks) < 20
+    tick.eyeradius = NaN;
+    tick.wseyemin = NaN;
+    tick.wseyemin_lat = NaN;
+    tick.wseyemin_lon = NaN;
+    tick.eye = NaN;
+end
+clear temp*
+
+% deciding the tc center
+if tick.eye == 1
+    tick.center_lat = tick.wseyemin_lat;
+    tick.center_lon = tick.wseyemin_lon ;
+else
+    tick.center_lat = tick.max_ws_lat;
+    tick.center_lon = tick.max_ws_lon;
+end
+
+% identify 30-kt(15 m/s) location and its distance from the maximum wind
+if tick.max_ws >= 15
+    tick.ws_30kt = 1;
+    temp_ws_30kt_id = find(tick.ws_mm > 14 & tick.ws_mm < 16);
+    temp_ws_30kt_lat = alt_crossing.lat(temp_ws_30kt_id);
+    temp_ws_30kt_lon = alt_crossing.lon(temp_ws_30kt_id);
+    temp_30kt_id1 = find(temp_ws_30kt_id < I);
+    temp_ws_30kt_lat1 = nanmean(temp_ws_30kt_lat(temp_30kt_id1));
+    temp_ws_30kt_lon1 = nanmean(temp_ws_30kt_lon(temp_30kt_id1));
+    temp_30kt_id2 = find(temp_ws_30kt_id > I);
+    temp_ws_30kt_lat2 = nanmean(temp_ws_30kt_lat(temp_30kt_id2));
+    temp_ws_30kt_lon2 = nanmean(temp_ws_30kt_lon(temp_30kt_id2));
+    tick.r30kt1_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_30kt_lat1 temp_ws_30kt_lon1]);
+    tick.r30kt2_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_30kt_lat2 temp_ws_30kt_lon2]);
+elseif tick.max_ws < 15
+    tick.ws_30kt = 0;
+    temp_ws_30kt_id = NaN;
+    temp_ws_30kt_lat = NaN;
+    temp_ws_30kt_lon = NaN;
+    temp_30kt_id1 = NaN;
+    temp_ws_30kt_lat1 = NaN;
+    temp_ws_30kt_lon1 = NaN;
+    temp_30kt_id2 = NaN;
+    temp_ws_30kt_lat2 = NaN;
+    temp_ws_30kt_lon2 = NaN;
+    tick.r30kt1_km = NaN;
+    tick.r30kt2_km = NaN;
+end
+clear temp*
+
+% identify 34-kt(17 m/s) location and its distance from the maximum wind
+if tick.max_ws >= 15
+    tick.ws_34kt = 1;
+    temp_ws_34kt_id = find(tick.ws_mm > 16 & tick.ws_mm < 18);
+    temp_ws_34kt_lat = alt_crossing.lat(temp_ws_34kt_id);
+    temp_ws_34kt_lon = alt_crossing.lon(temp_ws_34kt_id);
+    temp_34kt_id1 = find(temp_ws_34kt_id < I);
+    temp_ws_34kt_lat1 = nanmean(temp_ws_34kt_lat(temp_34kt_id1));
+    temp_ws_34kt_lon1 = nanmean(temp_ws_34kt_lon(temp_34kt_id1));
+    temp_34kt_id2 = find(temp_ws_34kt_id > I);
+    temp_ws_34kt_lat2 = nanmean(temp_ws_34kt_lat(temp_34kt_id2));
+    temp_ws_34kt_lon2 = nanmean(temp_ws_34kt_lon(temp_34kt_id2));
+    tick.r34kt1_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_34kt_lat1 temp_ws_34kt_lon1]);
+    tick.r34kt2_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_34kt_lat2 temp_ws_34kt_lon2]);
+elseif tick.max_ws < 15
+    tick.ws_34kt = 0;
+    temp_ws_34kt_id = NaN;
+    temp_ws_34kt_lat = NaN;
+    temp_ws_34kt_lon = NaN;
+    temp_34kt_id1 = NaN;
+    temp_ws_34kt_lat1 = NaN;
+    temp_ws_34kt_lon1 = NaN;
+    temp_34kt_id2 = NaN;
+    temp_ws_34kt_lat2 = NaN;
+    temp_ws_34kt_lon2 = NaN;
+    tick.r34kt1_km = NaN;
+    tick.r34kt2_km = NaN;
+end
+clear temp*
+
+% identify 50-kt(25 m/s) location and its distance from the maximum wind
+if tick.max_ws >= 25
+    tick.ws_50kt = 1;
+    temp_ws_50kt_id = find(tick.ws_mm > 24 & tick.ws_mm < 26);
+    temp_ws_50kt_lat = alt_crossing.lat(temp_ws_50kt_id);
+    temp_ws_50kt_lon = alt_crossing.lon(temp_ws_50kt_id);
+    temp_50kt_id1 = find(temp_ws_50kt_id < I);
+    temp_ws_50kt_lat1 = nanmean(temp_ws_50kt_lat(temp_50kt_id1));
+    temp_ws_50kt_lon1 = nanmean(temp_ws_50kt_lon(temp_50kt_id1));
+    temp_50kt_id2 = find(temp_ws_50kt_id > I);
+    temp_ws_50kt_lat2 = nanmean(temp_ws_50kt_lat(temp_50kt_id2));
+    temp_ws_50kt_lon2 = nanmean(temp_ws_50kt_lon(temp_50kt_id2));
+    tick.r50kt1_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_50kt_lat1 temp_ws_50kt_lon1]);
+    tick.r50kt2_km = lldistkm([tick.center_lat tick.center_lon],[temp_ws_50kt_lat2 temp_ws_50kt_lon2]);
+elseif tick.max_ws < 25
+    tick.ws_50kt = NaN;
+    temp_ws_50kt_id = NaN;
+    temp_ws_50kt_lat = NaN;
+    temp_ws_50kt_lon = NaN;
+    temp_50kt_id1 = NaN;
+    temp_ws_50kt_lat1 = NaN;
+    temp_ws_50kt_lon1 = NaN;
+    temp_50kt_id2 = NaN;
+    temp_ws_50kt_lat2 = NaN;
+    temp_ws_50kt_lon2 = NaN;
+    tick.r50kt1_km = NaN;
+    tick.r50kt2_km = NaN;
+end
+clear temp*
+
+% identify the ratio of R50 / R30
+tick.r50r30_1 = round(tick.r50kt1_km/tick.r30kt1_km,2);
+tick.r50r30_2 = round(tick.r50kt2_km/tick.r30kt2_km,2);
+
+% identify the ratio of R50 / R34
+tick.r50r34_1 = round(tick.r50kt1_km/tick.r34kt1_km,2);
+tick.r50r34_2 = round(tick.r50kt2_km/tick.r34kt2_km,2);
+
+%% code end here
